@@ -1,0 +1,17 @@
+{
+  "name": "nbverify",
+  "version": "0.1.0",
+  "description": "Check that a Binder-ready repository's notebooks actually execute",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "nbverify": "src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "ws": "^8.18.0"
+  }
+}
