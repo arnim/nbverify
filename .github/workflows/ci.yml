@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: Fast tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:fast
+
+  repo2docker-smoke:
+    name: Repo2Docker smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: fast
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      - name: Install repo2docker
+        run: pip install "jupyter-repo2docker==2025.08.0"
+      - name: Check Docker
+        run: docker info --format '{{.ServerVersion}}'
+      - name: Run local provisioning smoke tests
+        run: npm run test:e2e:repo2docker:smoke

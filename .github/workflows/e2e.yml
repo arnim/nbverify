@@ -1,0 +1,68 @@
+name: Full E2E
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-e2e
+  cancel-in-progress: false
+
+jobs:
+  repo2docker:
+    name: Full Repo2Docker matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      - name: Install repo2docker
+        run: pip install "jupyter-repo2docker==2025.08.0"
+      - name: Check Docker and disk space
+        run: |
+          docker info --format '{{.ServerVersion}}'
+          df -h /
+      - name: Run full local matrix
+        run: npm run test:e2e:repo2docker
+
+  binderbot:
+    name: MyBinder canaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e:binderbot
+
+  jupyter4nfdi:
+    name: Jupyter4NFDI canaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      JUPYTER4NFDI_TOKEN: ${{ secrets.JUPYTER4NFDI_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e:jupyter4nfdi

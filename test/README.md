@@ -31,15 +31,22 @@ Built on Node's `node:test` runner — no test dependencies.
 ## Running
 
 ```bash
-npm test                                                  # everything
-npm run test:fast                                         # offline CLI tests only
-npm test -- --test-name-pattern "repo2docker"             # one backend
-npm test -- --test-name-pattern "repo2docker/python-jupyter"  # one case
-npm test -- --test-name-pattern "build-failure"           # one repo, all backends
+npm test                                # everything
+npm run test:fast                       # offline CLI tests only
+npm run test:e2e:repo2docker:smoke      # small local image + build failure
+npm run test:e2e:repo2docker            # full local renderer matrix
+npm run test:e2e:binderbot              # MyBinder canaries
+npm run test:e2e:jupyter4nfdi           # Jupyter4NFDI canaries
+
+# An arbitrary slice (Node options must precede the test file):
+node --test --test-concurrency=1 \
+  --test-name-pattern="^repo2docker/python-jupyter$" test/e2e.test.js
 ```
 
 Test names are `<backend>/<repo>` (e2e) and `cli/<case>` (offline), so
-`--test-name-pattern` (a regex) selects any slice of the matrix.
+`--test-name-pattern` (a regex) selects any slice of the matrix. Invoke Node
+directly or use the dedicated scripts above: arguments appended with
+`npm test -- ...` come after the test-file glob and are not applied by Node.
 
 ## Prerequisites and skipping
 
