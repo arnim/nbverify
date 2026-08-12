@@ -110,7 +110,7 @@ export async function preflight(client, items, log = () => {}) {
   const checkId = crypto.randomBytes(6).toString('hex');
   const checkDir = `${workDir}/check-${checkId}`;
   const script = `
-import json, os, shutil, subprocess
+import json, os, subprocess
 here = os.path.dirname(os.path.abspath(__file__))
 out = {}
 for tool, cmd in {
