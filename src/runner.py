@@ -27,7 +27,7 @@ def write_json(name, obj):
     os.replace(tmp, os.path.join(JOB_DIR, name))
 
 
-def run_renderer(cmd, timeout):
+def run_renderer(cmd, timeout, cwd):
     """Run cmd with a wall-clock deadline, killing its process group on expiry.
 
     Renderers spawn children (kernels); a plain subprocess timeout would only
@@ -35,7 +35,7 @@ def run_renderer(cmd, timeout):
     """
     proc = subprocess.Popen(
         cmd,
-        cwd=ROOT_DIR,
+        cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -62,15 +62,20 @@ def run_item(index, item):
 
     if renderer == "quarto":
         # --output must be a bare filename; quarto writes it next to the
-        # input, so we move it into the job dir afterwards.
+        # input, so we move it into the job dir afterwards. Run from the
+        # document's own directory: quarto's embed-resources post-processing
+        # resolves the generated <name>_files/ dir against the CWD, so
+        # rendering a subdirectory document from the root fails.
+        cwd = os.path.join(ROOT_DIR, os.path.dirname(path))
         cmd = [
-            "quarto", "render", path,
+            "quarto", "render", os.path.basename(path),
             "--to", "html",
             "--execute",
             "--no-cache",
             "--output", out_name,
         ]
     else:  # nbconvert
+        cwd = ROOT_DIR
         cmd = [
             "jupyter", "nbconvert",
             "--to", "html",
@@ -90,7 +95,7 @@ def run_item(index, item):
         "command": cmd,
     }
     try:
-        exit_code, stdout, stderr, timed_out = run_renderer(cmd, timeout)
+        exit_code, stdout, stderr, timed_out = run_renderer(cmd, timeout, cwd)
         result["exit_code"] = exit_code
         result["stdout"] = stdout[-100000:]
         result["stderr"] = stderr[-100000:]

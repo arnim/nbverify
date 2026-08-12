@@ -7,9 +7,18 @@
 
 const GH = 'https://github.com/arnim';
 
+// repo2docker-test bundles the python-quarto, r-jupyter, and r-quarto
+// flavors in one repository (one image: R runtime + Python requirements +
+// Quarto postBuild — repo2docker installs Python and R side by side).
+// Each flavor stays a separate matrix case via explicit `paths`; the tiny
+// python-jupyter repo is kept separate as the minimal no-R/no-Quarto image
+// (and the good-citizen fixture for remote backends).
+const MERGED = `${GH}/repo2docker-test`;
+
 export const REPOS = {
   'python-jupyter': {
     url: `${GH}/repo2docker-python-jupyter-test`,
+    // no `paths`: runs all discovered notebooks, covering discovery mode
     success: 'success.ipynb',
     failure: 'execution-failure.ipynb',
     // six 15s cells (90s total): each cell fits a 60s budget, the whole
@@ -18,23 +27,26 @@ export const REPOS = {
     timeoutSeconds: 60,
   },
   'python-quarto': {
-    url: `${GH}/repo2docker-python-quarto-test`,
-    success: 'success.qmd',
-    failure: 'execution-failure.qmd',
-    // quarto renders are slower (pandoc + kernel startup), so this repo
+    url: MERGED,
+    paths: true, // run only this flavor's documents (explicit-paths mode)
+    success: 'python-quarto/success.qmd',
+    failure: 'python-quarto/execution-failure.qmd',
+    // quarto renders are slower (pandoc + kernel startup), so this flavor
     // uses a 120s budget and 6×30s sleeps (180s total)
-    timeout: 'timeout.qmd',
+    timeout: 'python-quarto/timeout.qmd',
     timeoutSeconds: 120,
   },
   'r-jupyter': {
-    url: `${GH}/repo2docker-r-jupyter-test`,
-    success: 'success.ipynb',
-    failure: 'execution-failure.ipynb',
+    url: MERGED,
+    paths: true,
+    success: 'r-jupyter/success.ipynb',
+    failure: 'r-jupyter/execution-failure.ipynb',
   },
   'r-quarto': {
-    url: `${GH}/repo2docker-r-quarto-test`,
-    success: 'success.qmd',
-    failure: 'execution-failure.qmd',
+    url: MERGED,
+    paths: true,
+    success: 'r-quarto/success.qmd',
+    failure: 'r-quarto/execution-failure.qmd',
   },
   'build-failure': {
     url: `${GH}/repo2docker-build-failure-test`,
@@ -54,7 +66,9 @@ export const REPOS = {
  */
 export const CASES = [
   { backend: 'repo2docker', repo: 'python-jupyter', expect: 'mixed', timeoutMin: 60 },
-  { backend: 'repo2docker', repo: 'python-quarto', expect: 'mixed', timeoutMin: 60 },
+  // the three merged-repo cases share one image; the first builds it,
+  // the Docker layer cache makes the other two cheap
+  { backend: 'repo2docker', repo: 'python-quarto', expect: 'mixed', timeoutMin: 90 },
   { backend: 'repo2docker', repo: 'r-jupyter', expect: 'mixed', timeoutMin: 90 },
   { backend: 'repo2docker', repo: 'r-quarto', expect: 'mixed', timeoutMin: 90 },
   { backend: 'repo2docker', repo: 'build-failure', expect: 'provisioning-failure', timeoutMin: 30 },

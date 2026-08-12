@@ -31,6 +31,12 @@ for (const { backend, repo, expect, timeoutMin } of CASES) {
       '--backend', backend,
       '--output-dir', outputDir,
     ];
+    // Merged-repo flavors pass explicit paths (only their own documents);
+    // standalone repos omit paths and exercise discovery mode instead.
+    if (repoDef.paths) {
+      args.push(repoDef.success, repoDef.failure);
+      if (repoDef.timeout) args.push(repoDef.timeout);
+    }
     // Repos with a timeout notebook run the whole set under a tight
     // per-notebook budget; the success/failure notebooks finish in seconds,
     // only the timeout notebook (which needs ~90s wall-clock while every

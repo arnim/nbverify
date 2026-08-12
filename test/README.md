@@ -12,6 +12,14 @@ Built on Node's `node:test` runner — no test dependencies.
 
 - `matrix.js` — the backend × repository matrix as data (one e2e test is
   generated per case). Add a repo or a case here, nothing else.
+  The python-quarto, r-jupyter, and r-quarto flavors live together in
+  [arnim/repo2docker-test](https://github.com/arnim/repo2docker-test)
+  (repo2docker installs Python and R side by side, so one image serves all
+  three); each flavor remains its own case via explicit paths, and the
+  shared image is built once per run (Docker layer cache). The minimal
+  python-jupyter repo stays separate — it is the only case without
+  explicit paths, so it also covers discovery mode, and it keeps a small,
+  fast, no-R/no-Quarto image for the remote backends.
   Repos with a `timeout` notebook (`timeout.ipynb` / `timeout.qmd`: several
   sleeps that each fit the budget but together exceed it) also verify that
   `--timeout` is a wall-clock per-notebook limit, not a per-cell one.
@@ -44,8 +52,13 @@ failing:
   mybinder.org (good-citizen policy). The full renderer matrix (R, quarto)
   runs on local repo2docker.
 
+Test fixture repositories: [repo2docker-python-jupyter-test](https://github.com/arnim/repo2docker-python-jupyter-test)
+(minimal), [repo2docker-test](https://github.com/arnim/repo2docker-test)
+(merged Python/R × quarto/nbconvert flavors), and
+[repo2docker-build-failure-test](https://github.com/arnim/repo2docker-build-failure-test).
+
 E2E tests run sequentially (`--test-concurrency=1`): one local Docker port
 at a time, one MyBinder session at a time.
 
-Full run: ~9 min with everything available (R image builds dominate;
-Docker layer cache makes reruns much faster).
+Full run: the single shared R+Quarto image build dominates; Docker layer
+cache makes reruns much faster.
