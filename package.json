@@ -7,6 +7,10 @@
   "bin": {
     "nbverify": "src/cli.js"
   },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
+    "test:fast": "node --test test/cli.test.js"
+  },
   "engines": {
     "node": ">=20"
   },
