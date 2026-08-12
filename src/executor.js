@@ -8,7 +8,7 @@ const RUNNER_PATH = fileURLToPath(new URL('./runner.py', import.meta.url));
 
 /**
  * Execute documents remotely via the terminal + file protocol described in
- * SPEC.md and download the resulting HTML.
+ * docs/specification.md and download the resulting HTML.
  *
  * @param {import('./jupyter.js').JupyterClient} client
  * @param {{path: string, renderer: 'quarto'|'nbconvert'}[]} items ordered

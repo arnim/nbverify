@@ -9,5 +9,4 @@ private/
 __pycache__/
 *.py[cod]
 .venv/
-SPEC.md
 SPIKE*.md

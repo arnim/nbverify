@@ -11,7 +11,7 @@ export class NbverifyError extends Error {
   }
 }
 
-/** Map an error to the process exit code defined in SPEC.md. */
+/** Map an error to the process exit code defined in docs/specification.md. */
 export function exitCodeFor(err) {
   switch (err?.code) {
     case 'PROVISIONING_FAILED':
