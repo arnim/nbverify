@@ -297,7 +297,13 @@ runOptions(
   }
 });
 
-program.parseAsync().catch((err) => {
+try {
+  // Keep module evaluation pending until the async command finishes. Merely
+  // attaching .catch() lets Node exit 0 if the event loop is briefly empty
+  // between awaited subprocess/network operations (observed after detached
+  // docker run on GitHub Actions), leaking the just-started container.
+  await program.parseAsync();
+} catch (err) {
   if (err instanceof InvalidArgumentError) {
     log(err.message);
     process.exit(2);
@@ -308,4 +314,4 @@ program.parseAsync().catch((err) => {
   }
   log(err.message);
   process.exit(err instanceof NbverifyError ? exitCodeFor(err) : 1);
-});
+}
