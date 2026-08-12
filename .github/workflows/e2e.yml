@@ -19,17 +19,18 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: npm ci
       - name: Install repo2docker
-        run: pip install "jupyter-repo2docker==2025.08.0"
+        # repo2docker uses chardet.universaldetector, removed in chardet 7.
+        run: pip install "jupyter-repo2docker==2025.08.0" "chardet==5.2.0"
       - name: Check Docker and disk space
         run: |
           docker info --format '{{.ServerVersion}}'
@@ -43,8 +44,8 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -59,8 +60,8 @@ jobs:
       JUPYTER4NFDI_TOKEN: ${{ secrets.JUPYTER4NFDI_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
