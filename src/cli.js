@@ -297,11 +297,13 @@ runOptions(
   }
 });
 
+// A pending Promise alone does not keep Node's event loop alive. Provisioning
+// can briefly have no referenced handles after detached `docker run` while the
+// first fetch probe is pending; without this lifetime handle Node exits (0 with
+// an un-awaited Promise, 13 with unresolved top-level await) and leaks the
+// container. Keep the process alive until Commander dispatch settles.
+const cliLifetime = setInterval(() => {}, 60_000);
 try {
-  // Keep module evaluation pending until the async command finishes. Merely
-  // attaching .catch() lets Node exit 0 if the event loop is briefly empty
-  // between awaited subprocess/network operations (observed after detached
-  // docker run on GitHub Actions), leaking the just-started container.
   await program.parseAsync();
 } catch (err) {
   if (err instanceof InvalidArgumentError) {
@@ -314,4 +316,6 @@ try {
   }
   log(err.message);
   process.exit(err instanceof NbverifyError ? exitCodeFor(err) : 1);
+} finally {
+  clearInterval(cliLifetime);
 }
