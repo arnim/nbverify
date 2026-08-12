@@ -79,11 +79,24 @@ async function clientFromOptions(opts) {
 
 // ---- shared run logic ------------------------------------------------------
 
-async function executeRun(client, session, paths, opts) {
+function toRunItem(p, ipynbRenderer) {
+  const remote = p.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (remote.endsWith('.qmd')) return { path: remote, renderer: 'quarto' };
+  if (remote.endsWith('.ipynb')) return { path: remote, renderer: ipynbRenderer };
+  throw new InvalidArgumentError(`unsupported file type: ${p}`);
+}
+
+/** Validate/collect explicit paths; must run before any server contact. */
+async function collectPaths(paths, opts) {
   if (opts.fromFile) {
     const text = await fs.readFile(opts.fromFile, 'utf8');
     paths = paths.concat(text.split('\n').map((l) => l.trim()).filter(Boolean));
   }
+  for (const p of paths) toRunItem(p, opts.ipynbRenderer); // arg validation only
+  return paths;
+}
+
+async function executeRun(client, session, paths, opts) {
   if (paths.length === 0) {
     log('no paths given, running all discovered notebooks in sorted order');
     paths = (await client.listNotebooks()).map((nb) => nb.path);
@@ -93,12 +106,7 @@ async function executeRun(client, session, paths, opts) {
     return true;
   }
 
-  const items = paths.map((p) => {
-    const remote = p.replace(/\\/g, '/').replace(/^\.\//, '');
-    if (remote.endsWith('.qmd')) return { path: remote, renderer: 'quarto' };
-    if (remote.endsWith('.ipynb')) return { path: remote, renderer: opts.ipynbRenderer };
-    throw new InvalidArgumentError(`unsupported file type: ${p}`);
-  });
+  const items = paths.map((p) => toRunItem(p, opts.ipynbRenderer));
 
   const startedAt = new Date().toISOString();
   const { success, results } = await runRemote(client, items, {
@@ -228,6 +236,7 @@ runOptions(
       .argument('[paths...]', 'notebook paths, executed in the given order')
   ).option('--from-file <file>', 'read notebook paths from a file (one per line)')
 ).action(async (paths, opts) => {
+  paths = await collectPaths(paths, opts);
   const { client, session } = await clientFromOptions(opts);
   await client.ping();
   const success = await executeRun(client, session, paths, opts);
@@ -272,6 +281,7 @@ runOptions(
   process.on('SIGTERM', onSignal);
 
   try {
+    paths = await collectPaths(paths, opts);
     session = await startBackend(repoUrl, opts);
     if (opts.keepSession) {
       await writeSession(opts.keepSession, session);
@@ -288,13 +298,13 @@ runOptions(
 });
 
 program.parseAsync().catch((err) => {
-  if (typeof err.code === 'string' && err.code.startsWith('commander.')) {
-    // help/version display exits 0; every argument error exits 2
-    process.exit(err.code === 'commander.helpDisplayed' || err.code === 'commander.version' ? 0 : 2);
-  }
   if (err instanceof InvalidArgumentError) {
     log(err.message);
     process.exit(2);
+  }
+  if (typeof err.code === 'string' && err.code.startsWith('commander.')) {
+    // help/version display exits 0; every argument error exits 2
+    process.exit(err.code === 'commander.helpDisplayed' || err.code === 'commander.version' ? 0 : 2);
   }
   log(err.message);
   process.exit(err instanceof NbverifyError ? exitCodeFor(err) : 1);
