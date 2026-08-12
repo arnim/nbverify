@@ -38,7 +38,7 @@ Rendered pages and `run-report.json` are written to `artifacts/`.
 
 | Backend | Best for | Requirements |
 | --- | --- | --- |
-| `binder` | Public GitHub repositories on MyBinder | None beyond Node.js |
+| `binder` | Public GitHub repositories via MyBinder | None beyond Node.js |
 | `repo2docker` | Local, reproducible runs | Docker and repo2docker |
 | `jupyter4nfdi` | NFDI Jupyter infrastructure | `JUPYTER4NFDI_TOKEN` |
 
