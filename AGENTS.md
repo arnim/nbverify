@@ -26,7 +26,7 @@ change specifically requires it:
 
 ```bash
 npm run test:e2e:repo2docker
-npm run test:e2e:binderbot
+npm run test:e2e:binder
 npm run test:e2e:jupyter4nfdi
 ```
 

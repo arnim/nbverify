@@ -2,7 +2,7 @@ import { NbverifyError } from '../errors.js';
 import { githubSpec } from './util.js';
 
 /**
- * binderbot backend: launch on a BinderHub (default mybinder.org).
+ * binder backend: launch on a BinderHub (default mybinder.org).
  *
  * Decision (spike 2): the `binderbot` npm package (0.1.4) is CLI-only — its
  * BinderHub client is a devDependency bundled into a `process.exit`-ing
@@ -10,7 +10,7 @@ import { githubSpec } from './util.js';
  * endpoint directly: `GET {hub}/build/gh/OWNER/REPO/REF` with
  * `Accept: text/event-stream` (required, otherwise 400), parse `data:`
  * events until phase `ready` yields `{url, token}`. This is the same
- * protocol binderbot wraps.
+ * protocol the `binderbot` package wraps.
  */
 
 const DEFAULT_HUB = 'https://mybinder.org/';
@@ -19,7 +19,7 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
   const hub = binderhub.endsWith('/') ? binderhub : binderhub + '/';
   const spec = githubSpec(repoUrl);
   const buildUrl = `${hub}build/gh/${spec}/${encodeURIComponent(ref)}`;
-  log(`binderbot: building ${spec}@${ref} on ${hub}`);
+  log(`binder: building ${spec}@${ref} on ${hub}`);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), launchTimeout * 1000);
@@ -58,7 +58,7 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
         }
         if (data.message) {
           lastMessage = data.message.trim();
-          log(`binderbot: [${data.phase ?? '?'}] ${lastMessage.split('\n').pop()}`);
+          log(`binder: [${data.phase ?? '?'}] ${lastMessage.split('\n').pop()}`);
         }
         if (data.phase === 'ready') {
           return {
@@ -107,11 +107,11 @@ export async function stop(session, { log = () => {} } = {}) {
     });
   } catch (err) {
     // Server already gone (culled or shut down) → idempotent success.
-    log(`binderbot: server unreachable during stop (${err.message}); treating as stopped`);
+    log(`binder: server unreachable during stop (${err.message}); treating as stopped`);
     return;
   }
   if (res.ok || res.status === 404 || res.status === 503) {
-    log('binderbot: server shut down');
+    log('binder: server shut down');
     return;
   }
   throw new NbverifyError('PROVISIONING_FAILED', `POST api/shutdown returned ${res.status}`);

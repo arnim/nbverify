@@ -12,7 +12,7 @@
     "test:fast": "node --test test/cli.test.js test/file-utils.test.js",
     "test:e2e:repo2docker:smoke": "node --test --test-concurrency=1 --test-name-pattern=\"^repo2docker/(python-jupyter|build-failure)$\" test/e2e.test.js",
     "test:e2e:repo2docker": "node --test --test-concurrency=1 --test-name-pattern=\"^repo2docker/\" test/e2e.test.js",
-    "test:e2e:binderbot": "node --test --test-concurrency=1 --test-name-pattern=\"^binderbot/\" test/e2e.test.js",
+    "test:e2e:binder": "node --test --test-concurrency=1 --test-name-pattern=\"^binder/\" test/e2e.test.js",
     "test:e2e:jupyter4nfdi": "node --test --test-concurrency=1 --test-name-pattern=\"^jupyter4nfdi/\" test/e2e.test.js"
   },
   "engines": {

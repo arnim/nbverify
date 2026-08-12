@@ -15,7 +15,7 @@ test('cli/unknown-command exits 2', async () => {
 test('cli/invalid-backend exits 2', async () => {
   const res = await runCli(['test', 'https://github.com/x/y', '--backend', 'nope']);
   assert.equal(res.code, 2);
-  assert.match(res.stderr, /repo2docker, binderbot, jupyter4nfdi/);
+  assert.match(res.stderr, /repo2docker, binder, jupyter4nfdi/);
 });
 
 test('cli/run-without-connection exits 2', async () => {

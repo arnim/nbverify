@@ -72,8 +72,8 @@ export const CASES = [
   { backend: 'repo2docker', repo: 'r-jupyter', expect: 'mixed', timeoutMin: 90 },
   { backend: 'repo2docker', repo: 'r-quarto', expect: 'mixed', timeoutMin: 90 },
   { backend: 'repo2docker', repo: 'build-failure', expect: 'provisioning-failure', timeoutMin: 30 },
-  { backend: 'binderbot', repo: 'python-jupyter', expect: 'mixed', timeoutMin: 30 },
-  { backend: 'binderbot', repo: 'build-failure', expect: 'provisioning-failure', timeoutMin: 30 },
+  { backend: 'binder', repo: 'python-jupyter', expect: 'mixed', timeoutMin: 30 },
+  { backend: 'binder', repo: 'build-failure', expect: 'provisioning-failure', timeoutMin: 30 },
   { backend: 'jupyter4nfdi', repo: 'python-jupyter', expect: 'mixed', timeoutMin: 30 },
   { backend: 'jupyter4nfdi', repo: 'build-failure', expect: 'provisioning-failure', timeoutMin: 30 },
 ];

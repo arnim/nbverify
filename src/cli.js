@@ -170,7 +170,7 @@ program
   .requiredOption('--backend <name>', BACKEND_NAMES.join('|'), parseBackend)
   .option('--ref <ref>', 'git ref (branch, tag, commit)')
   .option('--session <file>', 'session file to write', 'session.json')
-  .option('--binderhub <url>', 'BinderHub URL (binderbot backend)', 'https://mybinder.org/')
+  .option('--binderhub <url>', 'BinderHub URL (binder backend)', 'https://mybinder.org/')
   .option('--token-env <var>', 'env var with the hub token (jupyter4nfdi backend)', 'JUPYTER4NFDI_TOKEN')
   .option('--launch-timeout <seconds>', 'max seconds to wait for the server', parsePositiveNumber, 1800)
   .action(async (repoUrl, opts) => {
@@ -251,7 +251,7 @@ runOptions(
     .argument('[paths...]', 'notebook paths (omit to run all discovered)')
     .requiredOption('--backend <name>', BACKEND_NAMES.join('|'), parseBackend)
     .option('--ref <ref>', 'git ref (branch, tag, commit)')
-    .option('--binderhub <url>', 'BinderHub URL (binderbot backend)', 'https://mybinder.org/')
+    .option('--binderhub <url>', 'BinderHub URL (binder backend)', 'https://mybinder.org/')
     .option('--token-env <var>', 'env var with the hub token (jupyter4nfdi backend)', 'JUPYTER4NFDI_TOKEN')
     .option('--launch-timeout <seconds>', 'max seconds to wait for the server', parsePositiveNumber, 1800)
     .option('--keep-session <file>', 'keep the server running and write the session here')

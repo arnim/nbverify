@@ -1,5 +1,5 @@
 import * as repo2docker from './repo2docker.js';
-import * as binderbot from './binderbot.js';
+import * as binder from './binder.js';
 import * as jupyter4nfdi from './jupyter4nfdi.js';
 
 /**
@@ -8,7 +8,7 @@ import * as jupyter4nfdi from './jupyter4nfdi.js';
  *   status(session)      → { running, detail }
  *   stop(session, opts)  → void (idempotent)
  */
-const backends = { repo2docker, binderbot, jupyter4nfdi };
+const backends = { repo2docker, binder, jupyter4nfdi };
 
 export function getBackend(name) {
   const backend = backends[name];

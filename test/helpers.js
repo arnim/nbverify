@@ -77,5 +77,5 @@ export async function skipReason(backend) {
     }
     return dockerReason;
   }
-  return null; // binderbot: pure HTTP
+  return null; // binder: pure HTTP
 }

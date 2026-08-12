@@ -35,7 +35,7 @@ npm test                                # everything
 npm run test:fast                       # offline CLI tests only
 npm run test:e2e:repo2docker:smoke      # small local image + build failure
 npm run test:e2e:repo2docker            # full local renderer matrix
-npm run test:e2e:binderbot              # MyBinder canaries
+npm run test:e2e:binder                 # MyBinder canaries
 npm run test:e2e:jupyter4nfdi           # Jupyter4NFDI canaries
 
 # An arbitrary slice (Node options must precede the test file):
@@ -55,7 +55,7 @@ failing:
 
 - `repo2docker/*` — needs Docker running and `repo2docker` on PATH.
 - `jupyter4nfdi/*` — needs `JUPYTER4NFDI_TOKEN` set.
-- `binderbot/*` — pure HTTP; only the small python repo is used against
+- `binder/*` — pure HTTP; only the small python repo is used against
   mybinder.org (good-citizen policy). The full renderer matrix (R, quarto)
   runs on local repo2docker.
 

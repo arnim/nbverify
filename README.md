@@ -21,14 +21,14 @@ Run every discovered notebook through MyBinder:
 
 ```bash
 nbverify test https://github.com/OWNER/REPOSITORY \
-  --backend binderbot
+  --backend binder
 ```
 
 Or run selected notebooks in order:
 
 ```bash
 nbverify test https://github.com/OWNER/REPOSITORY \
-  --backend binderbot \
+  --backend binder \
   notebooks/introduction.ipynb analysis/report.qmd
 ```
 
@@ -38,7 +38,7 @@ Rendered pages and `run-report.json` are written to `artifacts/`.
 
 | Backend | Best for | Requirements |
 | --- | --- | --- |
-| `binderbot` | Public GitHub repositories on MyBinder | None beyond Node.js |
+| `binder` | Public GitHub repositories on MyBinder | None beyond Node.js |
 | `repo2docker` | Local, reproducible runs | Docker and repo2docker |
 | `jupyter4nfdi` | NFDI Jupyter infrastructure | `JUPYTER4NFDI_TOKEN` |
 
@@ -47,7 +47,7 @@ Rendered pages and `run-report.json` are written to `artifacts/`.
 For more control, provision once and run notebooks separately:
 
 ```bash
-nbverify start https://github.com/OWNER/REPOSITORY --backend binderbot
+nbverify start https://github.com/OWNER/REPOSITORY --backend binder
 nbverify list --session session.json
 nbverify run --session session.json notebooks/example.ipynb
 nbverify stop --session session.json

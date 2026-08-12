@@ -38,7 +38,7 @@ jobs:
       - name: Run full local matrix
         run: npm run test:e2e:repo2docker
 
-  binderbot:
+  binder:
     name: MyBinder canaries
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -50,7 +50,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run test:e2e:binderbot
+      - run: npm run test:e2e:binder
 
   jupyter4nfdi:
     name: Jupyter4NFDI canaries

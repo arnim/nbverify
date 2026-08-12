@@ -13,7 +13,7 @@ macOS, and Windows.
 Three independent layers:
 
 1. **Provisioner** — starts/stops a Jupyter server for the repository:
-   `repo2docker`, `binderbot`, or `jupyter4nfdi`.
+   `repo2docker`, `binder`, or `jupyter4nfdi`.
 2. **Server client** — talks to the standard Jupyter Server REST API
    (contents, terminals) given a server URL and token.
 3. **Executor** — renders individual documents on the server with
@@ -27,7 +27,7 @@ thing — a server URL and an access token.
 ### 1. `nbverify start` — provision a server
 
 ```bash
-nbverify start REPO_URL --backend repo2docker|binderbot|jupyter4nfdi \
+nbverify start REPO_URL --backend repo2docker|binder|jupyter4nfdi \
   [--ref REF] [--session session.json]
 ```
 
@@ -37,7 +37,7 @@ it to stdout; logs go to stderr:
 
 ```json
 {
-  "backend": "binderbot",
+  "backend": "binder",
   "repository": "https://github.com/binder-examples/requirements",
   "ref": "main",
   "server_url": "https://hub.mybinder.org/user/.../",
@@ -105,7 +105,7 @@ Rules:
 ### 4. `nbverify test` — one-shot (start → run → stop)
 
 ```bash
-nbverify test REPO_URL --backend binderbot \
+nbverify test REPO_URL --backend binder \
   [--ref main] [--ipynb-renderer nbconvert] [--output-dir artifacts/] \
   PATH [PATH ...]     # omit paths to run all discovered notebooks in sorted order
 ```
@@ -126,7 +126,7 @@ Always stops the server in a `finally` block (including on Ctrl-C), unless
 4. `backend_state`: container ID, image name, port. `stop` removes the
    container (and image with `--remove-image`).
 
-### binderbot
+### binder
 
 Launch on a BinderHub (`--binderhub`, default `https://mybinder.org/`) by
 driving the build endpoint directly with native `fetch`:
@@ -215,7 +215,7 @@ under test.
 ```json
 {
   "repository": "https://github.com/...",
-  "backend": "binderbot",
+  "backend": "binder",
   "success": false,
   "started_at": "...", "finished_at": "...",
   "results": [
@@ -256,7 +256,7 @@ nbverify/
 ├── package.json       # "bin": {"nbverify": "src/cli.js"} → npm install -g / npx
 ├── src/
 │   ├── cli.js
-│   ├── backends/      # repo2docker.js, binderbot.js, jupyter4nfdi.js
+│   ├── backends/      # repo2docker.js, binder.js, jupyter4nfdi.js
 │   ├── jupyter.js     # Contents + terminals client
 │   ├── executor.js    # job orchestration, polling, download
 │   ├── runner.py      # uploaded to the server, stdlib-only
@@ -273,6 +273,6 @@ CLI never depends on `skill/`, so standalone use is unaffected.
 
 - No shell-specific code: spawn processes without a shell; build local paths
   with Node's `path`; remote (Jupyter API) paths always use `/`.
-- `binderbot` and `jupyter4nfdi` backends are pure HTTP and work everywhere.
+- `binder` and `jupyter4nfdi` backends are pure HTTP and work everywhere.
   The `repo2docker` backend requires Docker and, on Windows, WSL (where
   repo2docker is supported).
