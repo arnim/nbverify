@@ -12,11 +12,19 @@ export const REPOS = {
     url: `${GH}/repo2docker-python-jupyter-test`,
     success: 'success.ipynb',
     failure: 'execution-failure.ipynb',
+    // six 15s cells (90s total): each cell fits a 60s budget, the whole
+    // notebook does not — only a wall-clock per-notebook timeout catches it
+    timeout: 'timeout.ipynb',
+    timeoutSeconds: 60,
   },
   'python-quarto': {
     url: `${GH}/repo2docker-python-quarto-test`,
     success: 'success.qmd',
     failure: 'execution-failure.qmd',
+    // quarto renders are slower (pandoc + kernel startup), so this repo
+    // uses a 120s budget and 6×30s sleeps (180s total)
+    timeout: 'timeout.qmd',
+    timeoutSeconds: 120,
   },
   'r-jupyter': {
     url: `${GH}/repo2docker-r-jupyter-test`,
@@ -36,6 +44,9 @@ export const REPOS = {
 /**
  * expect: 'mixed'  → exit 1; success notebook passes (HTML + sha256),
  *                    failure notebook fails (stderr log); report written.
+ *                    Repos with a `timeout` notebook additionally run it with
+ *                    `--timeout <timeoutSeconds>` and expect status 'timeout'
+ *                    after ~timeoutSeconds wall-clock (not per cell).
  * expect: 'provisioning-failure' → exit 3, PROVISIONING_FAILED, no report.
  *
  * Remote backends only get the small python repo (good-citizen policy);

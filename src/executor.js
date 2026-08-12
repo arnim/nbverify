@@ -57,7 +57,10 @@ export async function runRemote(client, items, opts = {}) {
   const results = [];
   try {
     // Poll result files in order; overall deadline scales with the work.
-    const overallDeadline = Date.now() + (timeout + 120) * 1000 * items.length + 60_000;
+    // The runner enforces `timeout` per notebook as a hard wall-clock limit;
+    // the extra 60s here is transport slack (polling interval, Contents API
+    // latency) and never extends execution time.
+    const overallDeadline = Date.now() + timeout * 1000 * items.length + 60_000;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       log(`running ${item.path} (${item.renderer}) ...`);

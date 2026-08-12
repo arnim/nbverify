@@ -12,6 +12,9 @@ Built on Node's `node:test` runner — no test dependencies.
 
 - `matrix.js` — the backend × repository matrix as data (one e2e test is
   generated per case). Add a repo or a case here, nothing else.
+  Repos with a `timeout` notebook (`timeout.ipynb` / `timeout.qmd`: several
+  sleeps that each fit the budget but together exceed it) also verify that
+  `--timeout` is a wall-clock per-notebook limit, not a per-cell one.
 - `helpers.js` — subprocess runner, temp dirs, report reader, backend
   availability probes, orphan-container check.
 - `cli.test.js` — fast, offline contract tests (`cli/…`, seconds).

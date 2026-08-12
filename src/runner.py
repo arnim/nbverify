@@ -9,6 +9,7 @@ terminal output is never parsed.
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -24,6 +25,32 @@ def write_json(name, obj):
     with open(tmp, "w") as f:
         json.dump(obj, f)
     os.replace(tmp, os.path.join(JOB_DIR, name))
+
+
+def run_renderer(cmd, timeout):
+    """Run cmd with a wall-clock deadline, killing its process group on expiry.
+
+    Renderers spawn children (kernels); a plain subprocess timeout would only
+    kill the direct child and leave a hung kernel behind.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        cwd=ROOT_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return proc.returncode, stdout, stderr, False
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            proc.kill()
+        stdout, stderr = proc.communicate()
+        return -1, stdout or "", stderr or "", True
 
 
 def run_item(index, item):
@@ -50,7 +77,9 @@ def run_item(index, item):
             "--execute", path,
             "--output", str(index),
             "--output-dir", JOB_DIR,
-            "--ExecutePreprocessor.timeout=%d" % int(timeout),
+            # Per-cell timeout disabled: --timeout is a wall-clock limit for
+            # the whole notebook, enforced uniformly by run_renderer below.
+            "--ExecutePreprocessor.timeout=-1",
         ]
 
     started = time.time()
@@ -61,22 +90,11 @@ def run_item(index, item):
         "command": cmd,
     }
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=ROOT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=timeout if renderer == "quarto" else timeout + 120,
-        )
-        result["exit_code"] = proc.returncode
-        result["stdout"] = proc.stdout[-100000:]
-        result["stderr"] = proc.stderr[-100000:]
-        result["timed_out"] = False
-    except subprocess.TimeoutExpired as exc:
-        result["exit_code"] = -1
-        result["stdout"] = (exc.stdout or "")[-100000:] if isinstance(exc.stdout, str) else ""
-        result["stderr"] = (exc.stderr or "")[-100000:] if isinstance(exc.stderr, str) else ""
-        result["timed_out"] = True
+        exit_code, stdout, stderr, timed_out = run_renderer(cmd, timeout)
+        result["exit_code"] = exit_code
+        result["stdout"] = stdout[-100000:]
+        result["stderr"] = stderr[-100000:]
+        result["timed_out"] = timed_out
     except FileNotFoundError as exc:
         result["exit_code"] = 127
         result["stdout"] = ""

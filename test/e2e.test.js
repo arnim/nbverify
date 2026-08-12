@@ -31,6 +31,11 @@ for (const { backend, repo, expect, timeoutMin } of CASES) {
       '--backend', backend,
       '--output-dir', outputDir,
     ];
+    // Repos with a timeout notebook run the whole set under a tight
+    // per-notebook budget; the success/failure notebooks finish in seconds,
+    // only the timeout notebook (which needs ~90s wall-clock while every
+    // individual cell stays under the budget) must trip it.
+    if (repoDef.timeout) args.push('--timeout', String(repoDef.timeoutSeconds));
     if (backend === 'repo2docker') args.push('--remove-image');
 
     const res = await runCli(args, { timeoutMs: timeoutMin * 60_000 - 10_000 });
@@ -49,7 +54,7 @@ for (const { backend, repo, expect, timeoutMin } of CASES) {
       assert.equal(report.repository, repoDef.url);
       assert.equal(report.backend, backend);
       assert.equal(report.success, false);
-      assert.equal(report.results.length, 2);
+      assert.equal(report.results.length, repoDef.timeout ? 3 : 2);
 
       const passed = report.results.find((r) => r.path === repoDef.success);
       assert.equal(passed.status, 'passed');
@@ -63,6 +68,23 @@ for (const { backend, repo, expect, timeoutMin } of CASES) {
       assert.equal(failed.exit_code === 0, false);
       assert.ok(failed.error, 'failed result carries an error summary');
       assert.ok(await exists(failed.stderr_log), `stderr log missing: ${failed.stderr_log}`);
+
+      if (repoDef.timeout) {
+        const timedOut = report.results.find((r) => r.path === repoDef.timeout);
+        assert.equal(timedOut.status, 'timeout');
+        assert.match(timedOut.error, /EXECUTION_TIMEOUT/);
+        // --timeout is a wall-clock limit for the whole notebook: the runner
+        // must kill the renderer at ~timeoutSeconds, well before the ~90s the
+        // notebook needs (which a per-cell timeout would incorrectly allow).
+        assert.ok(
+          timedOut.duration_seconds >= repoDef.timeoutSeconds - 1,
+          `killed too early: ${timedOut.duration_seconds}s`
+        );
+        assert.ok(
+          timedOut.duration_seconds < repoDef.timeoutSeconds + 20,
+          `ran past the wall-clock limit: ${timedOut.duration_seconds}s`
+        );
+      }
     }
 
     if (backend === 'repo2docker') {
