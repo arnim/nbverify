@@ -2,7 +2,7 @@
   "name": "nbverify",
   "version": "0.1.0",
   "description": "Check that a Binder-ready repository's notebooks actually execute",
-  "license": "MIT",
+  "license": "BSD-3-Clause",
   "type": "module",
   "bin": {
     "nbverify": "src/cli.js"
