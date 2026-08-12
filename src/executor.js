@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NbverifyError } from './errors.js';
+import { writeFileAtomic } from './file-utils.js';
 
 const RUNNER_PATH = fileURLToPath(new URL('./runner.py', import.meta.url));
 
@@ -229,13 +230,6 @@ function summarizeError(remote) {
   );
   return (interesting ?? lines[lines.length - 1] ?? 'execution failed').trim().slice(0, 500) +
     ' (full stderr in log)';
-}
-
-async function writeFileAtomic(filePath, buf) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const tmp = `${filePath}.tmp-${crypto.randomBytes(4).toString('hex')}`;
-  await fs.writeFile(tmp, buf);
-  await fs.rename(tmp, filePath);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

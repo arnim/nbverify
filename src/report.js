@@ -1,6 +1,5 @@
-import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
 import path from 'node:path';
+import { writeFileAtomic } from './file-utils.js';
 
 /**
  * Write artifacts/run-report.json (atomically).
@@ -10,9 +9,6 @@ import path from 'node:path';
  */
 export async function writeReport(outputDir, report) {
   const file = path.join(outputDir, 'run-report.json');
-  await fs.mkdir(outputDir, { recursive: true });
-  const tmp = `${file}.tmp-${crypto.randomBytes(4).toString('hex')}`;
-  await fs.writeFile(tmp, JSON.stringify(report, null, 2) + '\n');
-  await fs.rename(tmp, file);
+  await writeFileAtomic(file, JSON.stringify(report, null, 2) + '\n');
   return file;
 }
