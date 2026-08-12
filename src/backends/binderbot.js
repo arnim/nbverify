@@ -1,4 +1,5 @@
 import { NbverifyError } from '../errors.js';
+import { githubSpec } from './util.js';
 
 /**
  * binderbot backend: launch on a BinderHub (default mybinder.org).
@@ -13,15 +14,6 @@ import { NbverifyError } from '../errors.js';
  */
 
 const DEFAULT_HUB = 'https://mybinder.org/';
-
-/** @param {string} repoUrl @returns {string} OWNER/REPO */
-function githubSpec(repoUrl) {
-  const m = repoUrl.match(/^(?:https?:\/\/github\.com\/)?([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-  if (!m) {
-    throw new NbverifyError('PROVISIONING_FAILED', `not a GitHub repository URL: ${repoUrl}`);
-  }
-  return `${m[1]}/${m[2]}`;
-}
 
 export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, launchTimeout = 1800, log = () => {} } = {}) {
   const hub = binderhub.endsWith('/') ? binderhub : binderhub + '/';

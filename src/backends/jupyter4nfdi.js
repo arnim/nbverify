@@ -1,4 +1,5 @@
 import { NbverifyError } from '../errors.js';
+import { githubSpec } from './util.js';
 
 /**
  * jupyter4nfdi backend: start a repo2docker-built server on
@@ -10,15 +11,6 @@ import { NbverifyError } from '../errors.js';
  */
 
 const HUB = 'https://hub.nfdi-jupyter.de';
-
-/** @param {string} repoUrl @returns {string} OWNER/REPO */
-function githubSpec(repoUrl) {
-  const m = repoUrl.match(/^(?:https?:\/\/github\.com\/)?([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-  if (!m) {
-    throw new NbverifyError('PROVISIONING_FAILED', `not a GitHub repository URL: ${repoUrl}`);
-  }
-  return `${m[1]}/${m[2]}`;
-}
 
 export async function start(repoUrl, { ref = 'main', token, launchTimeout = 1800, log = () => {} } = {}) {
   if (!token) {
