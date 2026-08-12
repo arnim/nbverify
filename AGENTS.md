@@ -1,5 +1,10 @@
 # Development Rules
 
+## Git operations
+
+Do not commit or push changes unless the user explicitly requests it. A request
+to make or edit files does not imply permission to commit or push them.
+
 ## Validation before committing
 
 Run the fast offline suite before every commit:
