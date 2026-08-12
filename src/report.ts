@@ -1,14 +1,13 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { RunReport } from './types.js';
 
 /**
  * Write artifacts/run-report.json (atomically).
- * @param {string} outputDir
- * @param {object} report
- * @returns {Promise<string>} path of the written report
+ * @returns path of the written report
  */
-export async function writeReport(outputDir, report) {
+export async function writeReport(outputDir: string, report: RunReport): Promise<string> {
   const file = path.join(outputDir, 'run-report.json');
   await fs.mkdir(outputDir, { recursive: true });
   const tmp = `${file}.tmp-${crypto.randomBytes(4).toString('hex')}`;

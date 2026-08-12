@@ -1,4 +1,5 @@
 import { NbverifyError } from '../errors.js';
+import type { BackendStatus, Session, StartedServer, StartOptions, StopOptions } from '../types.js';
 
 /**
  * jupyter4nfdi backend: start a repo2docker-built server on
@@ -11,8 +12,26 @@ import { NbverifyError } from '../errors.js';
 
 const HUB = 'https://hub.nfdi-jupyter.de';
 
-/** @param {string} repoUrl @returns {string} OWNER/REPO */
-function githubSpec(repoUrl) {
+interface HubStartResponse {
+  status_url: string;
+  delete_url: string;
+}
+
+interface HubStatusResponse {
+  status: string;
+  next_url?: string;
+  message?: string;
+  detail?: string;
+  logs?: string[];
+}
+
+interface NfdiState {
+  status_url?: string;
+  delete_url?: string;
+}
+
+/** Extract OWNER/REPO from a GitHub URL. */
+function githubSpec(repoUrl: string): string {
   const m = repoUrl.match(/^(?:https?:\/\/github\.com\/)?([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
   if (!m) {
     throw new NbverifyError('PROVISIONING_FAILED', `not a GitHub repository URL: ${repoUrl}`);
@@ -20,14 +39,17 @@ function githubSpec(repoUrl) {
   return `${m[1]}/${m[2]}`;
 }
 
-export async function start(repoUrl, { ref = 'main', token, launchTimeout = 1800, log = () => {} } = {}) {
+export async function start(
+  repoUrl: string,
+  { ref = 'main', token, launchTimeout = 1800, log = () => {} }: StartOptions = {}
+): Promise<StartedServer> {
   if (!token) {
     throw new NbverifyError('AUTHENTICATION_FAILED', 'no Jupyter4NFDI token (set JUPYTER4NFDI_TOKEN or --token-env)');
   }
   const spec = githubSpec(repoUrl);
   log(`jupyter4nfdi: requesting server for ${spec}@${ref}`);
 
-  let res;
+  let res: Response;
   try {
     res = await fetch(`${HUB}/hub/api/start`, {
       method: 'POST',
@@ -41,7 +63,7 @@ export async function start(repoUrl, { ref = 'main', token, launchTimeout = 1800
       }),
     });
   } catch (err) {
-    throw new NbverifyError('PROVISIONING_FAILED', `cannot reach ${HUB}: ${err.message}`);
+    throw new NbverifyError('PROVISIONING_FAILED', `cannot reach ${HUB}: ${(err as Error).message}`);
   }
   if (res.status === 401 || res.status === 403) {
     throw new NbverifyError('AUTHENTICATION_FAILED', `hub API returned ${res.status}`);
@@ -52,7 +74,7 @@ export async function start(repoUrl, { ref = 'main', token, launchTimeout = 1800
       `POST hub/api/start returned ${res.status}: ${(await res.text()).slice(0, 500)}`
     );
   }
-  const { status_url: statusUrl, delete_url: deleteUrl } = await res.json();
+  const { status_url: statusUrl, delete_url: deleteUrl } = (await res.json()) as HubStartResponse;
 
   const deadline = Date.now() + launchTimeout * 1000;
   // The first poll may transiently report "stopped" before the hub
@@ -65,9 +87,9 @@ export async function start(repoUrl, { ref = 'main', token, launchTimeout = 1800
     if (!poll.ok) {
       throw new NbverifyError('PROVISIONING_FAILED', `GET status_url returned ${poll.status}`);
     }
-    const state = await poll.json();
+    const state = (await poll.json()) as HubStatusResponse;
     log(`jupyter4nfdi: ${state.status}`);
-    if (state.status === 'running') {
+    if (state.status === 'running' && state.next_url) {
       return {
         serverUrl: state.next_url,
         token,
@@ -91,40 +113,43 @@ export async function start(repoUrl, { ref = 'main', token, launchTimeout = 1800
       );
     }
     if (Date.now() > deadline) {
-      await stop({ token, backend_state: { delete_url: deleteUrl } }).catch(() => {});
+      await deleteServer(deleteUrl, token).catch(() => {});
       throw new NbverifyError('PROVISIONING_FAILED', `launch timed out after ${launchTimeout}s`);
     }
     await new Promise((r) => setTimeout(r, 5_000));
   }
 }
 
-export async function status(session) {
-  const statusUrl = session.backend_state?.status_url;
+export async function status(session: Session): Promise<BackendStatus> {
+  const { status_url: statusUrl } = (session.backend_state ?? {}) as NfdiState;
   if (!statusUrl) return { running: false, detail: 'no status_url in session' };
   try {
     const res = await fetch(statusUrl, {
       headers: { Authorization: `token ${session.token}` },
     });
     if (!res.ok) return { running: false, detail: `GET status_url → ${res.status}` };
-    const state = await res.json();
+    const state = (await res.json()) as HubStatusResponse;
     return { running: state.status === 'running', detail: state.status };
   } catch (err) {
-    return { running: false, detail: err.message };
+    return { running: false, detail: (err as Error).message };
   }
 }
 
-export async function stop(session, { log = () => {} } = {}) {
-  const deleteUrl = session.backend_state?.delete_url;
+export async function stop(session: Session, { log = () => {} }: StopOptions = {}): Promise<void> {
+  const { delete_url: deleteUrl } = (session.backend_state ?? {}) as NfdiState;
   if (!deleteUrl) {
     throw new NbverifyError('PROVISIONING_FAILED', 'no delete_url in session');
   }
+  await deleteServer(deleteUrl, session.token);
+  log('jupyter4nfdi: server deleted');
+}
+
+async function deleteServer(deleteUrl: string, token: string): Promise<void> {
   const res = await fetch(deleteUrl, {
     method: 'DELETE',
-    headers: { Authorization: `token ${session.token}` },
+    headers: { Authorization: `token ${token}` },
   });
-  if (res.ok || res.status === 404) {
-    log('jupyter4nfdi: server deleted');
-    return;
+  if (!(res.ok || res.status === 404)) {
+    throw new NbverifyError('PROVISIONING_FAILED', `DELETE delete_url returned ${res.status}`);
   }
-  throw new NbverifyError('PROVISIONING_FAILED', `DELETE delete_url returned ${res.status}`);
 }

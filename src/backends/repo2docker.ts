@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { NbverifyError } from '../errors.js';
+import type { BackendStatus, Session, StartedServer, StartOptions, StopOptions } from '../types.js';
 
 /**
  * repo2docker backend: build the image locally, run it detached with a
@@ -10,26 +11,27 @@ import { NbverifyError } from '../errors.js';
  * Requires repo2docker and Docker (on Windows: WSL).
  */
 
-/** Spawn without a shell, stream stderr/stdout to log, resolve exit code. */
-function run(cmd, args, { log = () => {}, echo = false } = {}) {
+interface RunOutcome {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/** Spawn without a shell, resolve exit code (optionally echo to stderr). */
+function run(cmd: string, args: string[], { echo = false } = {}): Promise<RunOutcome> {
   return new Promise((resolve, reject) => {
-    let proc;
-    try {
-      proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (err) {
-      return reject(new NbverifyError('PROVISIONING_FAILED', `cannot spawn ${cmd}: ${err.message}`));
-    }
+    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
-    proc.stdout.on('data', (d) => {
+    proc.stdout.on('data', (d: Buffer) => {
       stdout += d;
       if (echo) process.stderr.write(d);
     });
-    proc.stderr.on('data', (d) => {
+    proc.stderr.on('data', (d: Buffer) => {
       stderr += d;
       if (echo) process.stderr.write(d);
     });
-    proc.on('error', (err) => {
+    proc.on('error', (err: NodeJS.ErrnoException) => {
       reject(
         new NbverifyError(
           'PROVISIONING_FAILED',
@@ -41,18 +43,22 @@ function run(cmd, args, { log = () => {}, echo = false } = {}) {
   });
 }
 
-function freePort() {
+function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.listen(0, '127.0.0.1', () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
+      const address = srv.address();
+      if (address === null || typeof address === 'string') {
+        srv.close();
+        return reject(new NbverifyError('PROVISIONING_FAILED', 'cannot allocate a local port'));
+      }
+      srv.close(() => resolve(address.port));
     });
     srv.on('error', reject);
   });
 }
 
-async function pingServer(port, token) {
+async function pingServer(port: number, token: string): Promise<boolean> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/`, {
       headers: { Authorization: `token ${token}` },
@@ -64,12 +70,21 @@ async function pingServer(port, token) {
   }
 }
 
-async function containerRunning(containerId) {
+async function containerRunning(containerId: string): Promise<boolean> {
   const { code, stdout } = await run('docker', ['inspect', '-f', '{{.State.Running}}', containerId]);
   return code === 0 && stdout.trim() === 'true';
 }
 
-export async function start(repoUrl, { ref, launchTimeout = 3600, log = () => {} } = {}) {
+interface Repo2dockerState {
+  container_id?: string;
+  image?: string;
+  port?: number;
+}
+
+export async function start(
+  repoUrl: string,
+  { ref, launchTimeout = 3600, log = () => {} }: StartOptions = {}
+): Promise<StartedServer> {
   // Docker availability first: clearest possible error.
   const dockerCheck = await run('docker', ['info', '--format', '{{.ServerVersion}}']);
   if (dockerCheck.code !== 0) {
@@ -98,7 +113,7 @@ export async function start(repoUrl, { ref, launchTimeout = 3600, log = () => {}
     ['jupyter', 'notebook', '--ip=0.0.0.0', `--NotebookApp.token=${token}`],
   ];
 
-  let containerId = null;
+  let containerId: string | null = null;
   try {
     for (const command of commands) {
       log(`repo2docker: starting container (${command.slice(0, 2).join(' ')}) on 127.0.0.1:${port}`);
@@ -154,16 +169,19 @@ export async function start(repoUrl, { ref, launchTimeout = 3600, log = () => {}
   }
 }
 
-export async function status(session) {
-  const { container_id: cid, port } = session.backend_state ?? {};
+export async function status(session: Session): Promise<BackendStatus> {
+  const { container_id: cid, port } = (session.backend_state ?? {}) as Repo2dockerState;
   if (!cid) return { running: false, detail: 'no container_id in session' };
   if (!(await containerRunning(cid))) return { running: false, detail: 'container not running' };
-  const ready = await pingServer(port, session.token);
+  const ready = port !== undefined && (await pingServer(port, session.token));
   return { running: ready, detail: ready ? 'server responding' : 'container up, server not responding' };
 }
 
-export async function stop(session, { removeImage = false, log = () => {} } = {}) {
-  const { container_id: cid, image } = session.backend_state ?? {};
+export async function stop(
+  session: Session,
+  { removeImage = false, log = () => {} }: StopOptions = {}
+): Promise<void> {
+  const { container_id: cid, image } = (session.backend_state ?? {}) as Repo2dockerState;
   if (cid) {
     const res = await run('docker', ['rm', '-f', cid]);
     log(

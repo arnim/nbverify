@@ -1,28 +1,44 @@
 import WebSocket from 'ws';
 import { NbverifyError } from './errors.js';
+import type { NotebookEntry } from './types.js';
+
+/** Subset of the Jupyter Contents API model that nbverify uses. */
+export interface ContentsModel {
+  name: string;
+  path: string;
+  type: 'file' | 'directory' | 'notebook';
+  format: 'text' | 'base64' | 'json' | null;
+  content: unknown;
+}
+
+interface GetContentsOptions {
+  content?: 0 | 1;
+  format?: 'text' | 'base64';
+  type?: 'file' | 'directory';
+}
 
 /**
  * Client for the standard Jupyter Server REST API (contents + terminals).
  * Works with any backend that yields a server URL and a token.
  */
 export class JupyterClient {
-  /**
-   * @param {string} serverUrl e.g. https://hub.mybinder.org/user/xyz/
-   * @param {string} token
-   */
-  constructor(serverUrl, token) {
+  readonly serverUrl: string;
+  private readonly token: string;
+  private workDir?: string;
+
+  constructor(serverUrl: string, token: string) {
     this.serverUrl = serverUrl.endsWith('/') ? serverUrl : serverUrl + '/';
     this.token = token;
   }
 
-  /** @returns {string} absolute URL under the server base path */
-  apiUrl(path) {
+  /** Absolute URL under the server base path. */
+  apiUrl(path: string): string {
     return this.serverUrl + path.replace(/^\//, '');
   }
 
-  async #fetch(path, options = {}) {
+  async #fetch(path: string, options: RequestInit = {}): Promise<Response> {
     const url = this.apiUrl(path);
-    let res;
+    let res: Response;
     try {
       res = await fetch(url, {
         ...options,
@@ -32,7 +48,7 @@ export class JupyterClient {
         },
       });
     } catch (err) {
-      throw new NbverifyError('SERVER_UNREACHABLE', `${url}: ${err.message}`);
+      throw new NbverifyError('SERVER_UNREACHABLE', `${url}: ${(err as Error).message}`);
     }
     if (res.status === 401 || res.status === 403) {
       throw new NbverifyError('AUTHENTICATION_FAILED', `${res.status} for ${url}`);
@@ -41,7 +57,7 @@ export class JupyterClient {
   }
 
   /** Check the server is reachable and the token works. */
-  async ping() {
+  async ping(): Promise<unknown> {
     const res = await this.#fetch('api/');
     if (!res.ok) {
       throw new NbverifyError('SERVER_UNREACHABLE', `GET api/ returned ${res.status}`);
@@ -52,7 +68,10 @@ export class JupyterClient {
   // ---- Contents API -------------------------------------------------------
 
   /** GET api/contents/{path}. Returns the model, or null on 404. */
-  async getContents(remotePath, { content = 1, format, type } = {}) {
+  async getContents(
+    remotePath: string,
+    { content = 1, format, type }: GetContentsOptions = {}
+  ): Promise<ContentsModel | null> {
     const params = new URLSearchParams({ content: String(content) });
     if (format) params.set('format', format);
     if (type) params.set('type', type);
@@ -66,11 +85,11 @@ export class JupyterClient {
         `GET api/contents/${remotePath} returned ${res.status}`
       );
     }
-    return res.json();
+    return res.json() as Promise<ContentsModel>;
   }
 
   /** Upload a text file (creating parent directories as needed). */
-  async putTextFile(remotePath, text) {
+  async putTextFile(remotePath: string, text: string): Promise<void> {
     await this.#ensureParentDirs(remotePath);
     const res = await this.#fetch(`api/contents/${encodeRemotePath(remotePath)}`, {
       method: 'PUT',
@@ -85,7 +104,7 @@ export class JupyterClient {
     }
   }
 
-  async #ensureParentDirs(remotePath) {
+  async #ensureParentDirs(remotePath: string): Promise<void> {
     const parts = remotePath.split('/').slice(0, -1);
     let dir = '';
     for (const part of parts) {
@@ -111,7 +130,7 @@ export class JupyterClient {
    * `_nbverify` on servers where the Contents API rejects hidden paths
    * (ContentsManager.allow_hidden defaults to false).
    */
-  async resolveWorkDir() {
+  async resolveWorkDir(): Promise<string> {
     if (this.workDir) return this.workDir;
     for (const candidate of ['.nbverify', '_nbverify']) {
       if (await this.getContents(candidate, { content: 0 })) {
@@ -135,7 +154,7 @@ export class JupyterClient {
    * Download a file as a Buffer (uses base64 format so it works for
    * binary and text alike).
    */
-  async downloadFile(remotePath) {
+  async downloadFile(remotePath: string): Promise<Buffer> {
     const model = await this.getContents(remotePath, {
       type: 'file',
       format: 'base64',
@@ -144,10 +163,10 @@ export class JupyterClient {
       throw new NbverifyError('DOWNLOAD_FAILED', `not found on server: ${remotePath}`);
     }
     if (model.format === 'base64') {
-      return Buffer.from(model.content, 'base64');
+      return Buffer.from(model.content as string, 'base64');
     }
     if (model.format === 'text') {
-      return Buffer.from(model.content, 'utf8');
+      return Buffer.from(model.content as string, 'utf8');
     }
     if (model.type === 'notebook') {
       return Buffer.from(JSON.stringify(model.content), 'utf8');
@@ -156,24 +175,21 @@ export class JupyterClient {
   }
 
   /** DELETE a file or directory (directories recursively where supported). */
-  async delete(remotePath) {
+  async delete(remotePath: string): Promise<boolean> {
     const res = await this.#fetch(`api/contents/${encodeRemotePath(remotePath)}`, {
       method: 'DELETE',
     });
     return res.ok || res.status === 404;
   }
 
-  /**
-   * Recursively list notebook-like files, lexicographically sorted.
-   * @returns {Promise<{path: string, kind: 'jupyter'|'quarto'}[]>}
-   */
-  async listNotebooks() {
+  /** Recursively list notebook-like files, lexicographically sorted. */
+  async listNotebooks(): Promise<NotebookEntry[]> {
     const SKIP_DIRS = new Set(['.git', '.ipynb_checkpoints', '_build', '_site', '.nbverify', '_nbverify']);
-    const found = [];
-    const walk = async (dir) => {
+    const found: NotebookEntry[] = [];
+    const walk = async (dir: string): Promise<void> => {
       const model = await this.getContents(dir);
       if (!model || model.type !== 'directory') return;
-      for (const item of model.content ?? []) {
+      for (const item of (model.content ?? []) as ContentsModel[]) {
         const name = item.name;
         if (item.type === 'directory') {
           if (!SKIP_DIRS.has(name)) await walk(item.path);
@@ -192,13 +208,13 @@ export class JupyterClient {
   // ---- Terminals API ------------------------------------------------------
 
   /** Check that the terminals API is available. */
-  async terminalsAvailable() {
+  async terminalsAvailable(): Promise<boolean> {
     const res = await this.#fetch('api/terminals');
     return res.ok;
   }
 
   /** Create a terminal, returns its name. */
-  async createTerminal() {
+  async createTerminal(): Promise<string> {
     const res = await this.#fetch('api/terminals', { method: 'POST' });
     if (!res.ok) {
       throw new NbverifyError(
@@ -206,11 +222,11 @@ export class JupyterClient {
         `terminals API unavailable (POST api/terminals returned ${res.status})`
       );
     }
-    const model = await res.json();
+    const model = (await res.json()) as { name: string };
     return model.name;
   }
 
-  async deleteTerminal(name) {
+  async deleteTerminal(name: string): Promise<void> {
     await this.#fetch(`api/terminals/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     }).catch(() => {});
@@ -220,7 +236,7 @@ export class JupyterClient {
    * Open the terminal WebSocket and send a single command line.
    * Output is not parsed; results travel through files (Contents API).
    */
-  async sendTerminalCommand(name, command) {
+  async sendTerminalCommand(name: string, command: string): Promise<WebSocket> {
     const wsUrl =
       this.apiUrl(`terminals/websocket/${encodeURIComponent(name)}`).replace(
         /^http/,
@@ -229,7 +245,7 @@ export class JupyterClient {
     const ws = new WebSocket(wsUrl, {
       headers: { Authorization: `token ${this.token}` },
     });
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new NbverifyError('SERVER_UNREACHABLE', 'terminal websocket timeout')),
         30_000
@@ -250,7 +266,7 @@ export class JupyterClient {
 }
 
 /** Encode a remote path segment-by-segment, preserving '/' separators. */
-function encodeRemotePath(remotePath) {
+function encodeRemotePath(remotePath: string): string {
   return remotePath
     .split('/')
     .map((s) => encodeURIComponent(s))

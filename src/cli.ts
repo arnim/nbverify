@@ -7,8 +7,11 @@ import { writeReport } from './report.js';
 import { exitCodeFor, NbverifyError } from './errors.js';
 import { getBackend, BACKEND_NAMES } from './backends/index.js';
 import { makeSession, writeSession, readSession } from './session.js';
+import type { BackendName, Renderer, RunItem, RunReport, Session } from './types.js';
 
-const log = (msg) => process.stderr.write(`nbverify: ${msg}\n`);
+const log = (msg: string): void => {
+  process.stderr.write(`nbverify: ${msg}\n`);
+};
 
 const program = new Command();
 program
@@ -19,34 +22,58 @@ program
 
 // ---- option helpers --------------------------------------------------------
 
-const parseBackend = (v) => {
-  if (!BACKEND_NAMES.includes(v)) {
+const parseBackend = (v: string): BackendName => {
+  if (!(BACKEND_NAMES as string[]).includes(v)) {
     throw new InvalidArgumentError(`must be one of: ${BACKEND_NAMES.join(', ')}`);
   }
-  return v;
+  return v as BackendName;
 };
 
-const parseRenderer = (v) => {
+const parseRenderer = (v: string): Renderer => {
   if (v !== 'quarto' && v !== 'nbconvert') {
     throw new InvalidArgumentError('must be "quarto" or "nbconvert"');
   }
   return v;
 };
 
-const parsePositiveNumber = (v) => {
+const parsePositiveNumber = (v: string): number => {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) throw new InvalidArgumentError('must be a positive number');
   return n;
 };
 
-function connectionOptions(cmd) {
+interface ConnectionOptions {
+  session?: string;
+  serverUrl?: string;
+  tokenEnv: string;
+}
+
+interface RunFlags {
+  ipynbRenderer: Renderer;
+  timeout: number;
+  failFast?: boolean;
+  outputDir: string;
+  keepRemoteArtifacts?: boolean;
+  fromFile?: string;
+}
+
+interface ProvisionFlags {
+  backend: BackendName;
+  ref?: string;
+  binderhub?: string;
+  tokenEnv?: string;
+  launchTimeout?: number;
+  removeImage?: boolean;
+}
+
+function connectionOptions(cmd: Command): Command {
   return cmd
     .option('--session <file>', 'session file written by `nbverify start`')
     .option('--server-url <url>', 'Jupyter server URL (alternative to --session)')
     .option('--token-env <var>', 'environment variable holding the token', 'JUPYTER_TOKEN');
 }
 
-function runOptions(cmd) {
+function runOptions(cmd: Command): Command {
   return cmd
     .option('--ipynb-renderer <renderer>', 'quarto or nbconvert', parseRenderer, 'nbconvert')
     .option('--timeout <seconds>', 'per-notebook timeout', parsePositiveNumber, 600)
@@ -55,10 +82,12 @@ function runOptions(cmd) {
     .option('--keep-remote-artifacts', 'do not delete the work dir on the server');
 }
 
-async function clientFromOptions(opts) {
-  let serverUrl;
-  let token;
-  let session = null;
+async function clientFromOptions(
+  opts: ConnectionOptions
+): Promise<{ client: JupyterClient; session: Session | null }> {
+  let serverUrl: string | undefined;
+  let token: string | undefined;
+  let session: Session | null = null;
   if (opts.session) {
     session = await readSession(opts.session);
     serverUrl = session.server_url;
@@ -79,7 +108,7 @@ async function clientFromOptions(opts) {
 
 // ---- shared run logic ------------------------------------------------------
 
-function toRunItem(p, ipynbRenderer) {
+function toRunItem(p: string, ipynbRenderer: Renderer): RunItem {
   const remote = p.replace(/\\/g, '/').replace(/^\.\//, '');
   if (remote.endsWith('.qmd')) return { path: remote, renderer: 'quarto' };
   if (remote.endsWith('.ipynb')) return { path: remote, renderer: ipynbRenderer };
@@ -87,7 +116,7 @@ function toRunItem(p, ipynbRenderer) {
 }
 
 /** Validate/collect explicit paths; must run before any server contact. */
-async function collectPaths(paths, opts) {
+async function collectPaths(paths: string[], opts: RunFlags): Promise<string[]> {
   if (opts.fromFile) {
     const text = await fs.readFile(opts.fromFile, 'utf8');
     paths = paths.concat(text.split('\n').map((l) => l.trim()).filter(Boolean));
@@ -96,7 +125,12 @@ async function collectPaths(paths, opts) {
   return paths;
 }
 
-async function executeRun(client, session, paths, opts) {
+async function executeRun(
+  client: JupyterClient,
+  session: Session | null,
+  paths: string[],
+  opts: RunFlags
+): Promise<boolean> {
   if (paths.length === 0) {
     log('no paths given, running all discovered notebooks in sorted order');
     paths = (await client.listNotebooks()).map((nb) => nb.path);
@@ -117,7 +151,7 @@ async function executeRun(client, session, paths, opts) {
     log,
   });
 
-  const report = {
+  const report: RunReport = {
     repository: session?.repository ?? null,
     backend: session?.backend ?? null,
     success,
@@ -133,7 +167,7 @@ async function executeRun(client, session, paths, opts) {
 
 // ---- provisioning helpers --------------------------------------------------
 
-async function startBackend(repoUrl, opts) {
+async function startBackend(repoUrl: string, opts: ProvisionFlags): Promise<Session> {
   const backend = getBackend(opts.backend);
   const token =
     opts.backend === 'jupyter4nfdi'
@@ -156,7 +190,7 @@ async function startBackend(repoUrl, opts) {
   });
 }
 
-async function stopBackend(session, opts = {}) {
+async function stopBackend(session: Session, opts: { removeImage?: boolean } = {}): Promise<void> {
   const backend = getBackend(session.backend);
   await backend.stop(session, { removeImage: Boolean(opts.removeImage), log });
 }
@@ -173,7 +207,7 @@ program
   .option('--binderhub <url>', 'BinderHub URL (binderbot backend)', 'https://mybinder.org/')
   .option('--token-env <var>', 'env var with the hub token (jupyter4nfdi backend)', 'JUPYTER4NFDI_TOKEN')
   .option('--launch-timeout <seconds>', 'max seconds to wait for the server', parsePositiveNumber, 1800)
-  .action(async (repoUrl, opts) => {
+  .action(async (repoUrl: string, opts: ProvisionFlags & { session: string }) => {
     const session = await startBackend(repoUrl, opts);
     const json = await writeSession(opts.session, session);
     log(`session written to ${opts.session}`);
@@ -184,7 +218,7 @@ program
   .command('status')
   .description('check whether the provisioned server is running')
   .requiredOption('--session <file>', 'session file')
-  .action(async (opts) => {
+  .action(async (opts: { session: string }) => {
     const session = await readSession(opts.session);
     const backend = getBackend(session.backend);
     const { running, detail } = await backend.status(session);
@@ -203,7 +237,7 @@ program
   .description('stop the provisioned server (idempotent)')
   .requiredOption('--session <file>', 'session file')
   .option('--remove-image', 'also remove the built image (repo2docker backend)')
-  .action(async (opts) => {
+  .action(async (opts: { session: string; removeImage?: boolean }) => {
     const session = await readSession(opts.session);
     await stopBackend(session, opts);
     log('stopped');
@@ -215,7 +249,7 @@ connectionOptions(
     .description('discover notebooks on the server (Contents API)')
 )
   .option('--json', 'print JSON instead of text')
-  .action(async (opts) => {
+  .action(async (opts: ConnectionOptions & { json?: boolean }) => {
     const { client } = await clientFromOptions(opts);
     await client.ping();
     const notebooks = await client.listNotebooks();
@@ -235,7 +269,7 @@ runOptions(
       .description('execute notebooks on the server and download HTML')
       .argument('[paths...]', 'notebook paths, executed in the given order')
   ).option('--from-file <file>', 'read notebook paths from a file (one per line)')
-).action(async (paths, opts) => {
+).action(async (paths: string[], opts: ConnectionOptions & RunFlags) => {
   paths = await collectPaths(paths, opts);
   const { client, session } = await clientFromOptions(opts);
   await client.ping();
@@ -256,56 +290,63 @@ runOptions(
     .option('--launch-timeout <seconds>', 'max seconds to wait for the server', parsePositiveNumber, 1800)
     .option('--keep-session <file>', 'keep the server running and write the session here')
     .option('--remove-image', 'remove the built image after the run (repo2docker backend)')
-).action(async (repoUrl, paths, opts) => {
-  let session = null;
-  let interrupted = false;
+).action(
+  async (
+    repoUrl: string,
+    paths: string[],
+    opts: ProvisionFlags & RunFlags & { keepSession?: string }
+  ) => {
+    let session: Session | null = null;
+    let interrupted = false;
 
-  const cleanup = async () => {
-    if (!session || opts.keepSession) return;
-    const s = session;
-    session = null; // never stop twice
+    const cleanup = async (): Promise<void> => {
+      if (!session || opts.keepSession) return;
+      const s = session;
+      session = null; // never stop twice
+      try {
+        log('stopping server');
+        await stopBackend(s, opts);
+      } catch (err) {
+        log(`warning: failed to stop server: ${(err as Error).message}`);
+      }
+    };
+
+    const onSignal = (): void => {
+      interrupted = true;
+      log('interrupted, stopping server');
+      cleanup().finally(() => process.exit(130));
+    };
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
+
     try {
-      log('stopping server');
-      await stopBackend(s, opts);
-    } catch (err) {
-      log(`warning: failed to stop server: ${err.message}`);
+      paths = await collectPaths(paths, opts);
+      session = await startBackend(repoUrl, opts);
+      if (opts.keepSession) {
+        await writeSession(opts.keepSession, session);
+        log(`session written to ${opts.keepSession}`);
+      }
+      const client = new JupyterClient(session.server_url, session.token);
+      await client.ping();
+      const success = await executeRun(client, session, paths, opts);
+      await cleanup();
+      process.exit(interrupted ? 130 : success ? 0 : 1);
+    } finally {
+      await cleanup();
     }
-  };
-
-  const onSignal = () => {
-    interrupted = true;
-    log('interrupted, stopping server');
-    cleanup().finally(() => process.exit(130));
-  };
-  process.on('SIGINT', onSignal);
-  process.on('SIGTERM', onSignal);
-
-  try {
-    paths = await collectPaths(paths, opts);
-    session = await startBackend(repoUrl, opts);
-    if (opts.keepSession) {
-      await writeSession(opts.keepSession, session);
-      log(`session written to ${opts.keepSession}`);
-    }
-    const client = new JupyterClient(session.server_url, session.token);
-    await client.ping();
-    const success = await executeRun(client, session, paths, opts);
-    await cleanup();
-    process.exit(interrupted ? 130 : success ? 0 : 1);
-  } finally {
-    await cleanup();
   }
-});
+);
 
-program.parseAsync().catch((err) => {
+program.parseAsync().catch((err: unknown) => {
   if (err instanceof InvalidArgumentError) {
     log(err.message);
     process.exit(2);
   }
-  if (typeof err.code === 'string' && err.code.startsWith('commander.')) {
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === 'string' && code.startsWith('commander.')) {
     // help/version display exits 0; every argument error exits 2
-    process.exit(err.code === 'commander.helpDisplayed' || err.code === 'commander.version' ? 0 : 2);
+    process.exit(code === 'commander.helpDisplayed' || code === 'commander.version' ? 0 : 2);
   }
-  log(err.message);
+  log((err as Error).message);
   process.exit(err instanceof NbverifyError ? exitCodeFor(err) : 1);
 });

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const CLI = fileURLToPath(new URL('../src/cli.js', import.meta.url));
+const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 
 /** Run the nbverify CLI as a subprocess (black box). */
 export function runCli(args, { timeoutMs = 60 * 60_000, env = {} } = {}) {

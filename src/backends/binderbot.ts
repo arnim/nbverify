@@ -1,4 +1,5 @@
 import { NbverifyError } from '../errors.js';
+import type { BackendStatus, Session, StartedServer, StartOptions, StopOptions } from '../types.js';
 
 /**
  * binderbot backend: launch on a BinderHub (default mybinder.org).
@@ -14,8 +15,15 @@ import { NbverifyError } from '../errors.js';
 
 const DEFAULT_HUB = 'https://mybinder.org/';
 
-/** @param {string} repoUrl @returns {string} OWNER/REPO */
-function githubSpec(repoUrl) {
+interface BuildEvent {
+  phase?: string;
+  message?: string;
+  url?: string;
+  token?: string;
+}
+
+/** Extract OWNER/REPO from a GitHub URL. */
+function githubSpec(repoUrl: string): string {
   const m = repoUrl.match(/^(?:https?:\/\/github\.com\/)?([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
   if (!m) {
     throw new NbverifyError('PROVISIONING_FAILED', `not a GitHub repository URL: ${repoUrl}`);
@@ -23,7 +31,10 @@ function githubSpec(repoUrl) {
   return `${m[1]}/${m[2]}`;
 }
 
-export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, launchTimeout = 1800, log = () => {} } = {}) {
+export async function start(
+  repoUrl: string,
+  { ref = 'HEAD', binderhub = DEFAULT_HUB, launchTimeout = 1800, log = () => {} }: StartOptions = {}
+): Promise<StartedServer> {
   const hub = binderhub.endsWith('/') ? binderhub : binderhub + '/';
   const spec = githubSpec(repoUrl);
   const buildUrl = `${hub}build/gh/${spec}/${encodeURIComponent(ref)}`;
@@ -31,7 +42,7 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), launchTimeout * 1000);
-  let res;
+  let res: Response;
   try {
     res = await fetch(buildUrl, {
       headers: { Accept: 'text/event-stream' },
@@ -39,7 +50,7 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
     });
   } catch (err) {
     clearTimeout(timer);
-    throw new NbverifyError('PROVISIONING_FAILED', `cannot reach ${hub}: ${err.message}`);
+    throw new NbverifyError('PROVISIONING_FAILED', `cannot reach ${hub}: ${(err as Error).message}`);
   }
   if (!res.ok || !res.body) {
     clearTimeout(timer);
@@ -51,16 +62,16 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
     let buf = '';
     let lastMessage = '';
     for await (const chunk of res.body) {
-      buf += decoder.decode(chunk, { stream: true });
-      let idx;
+      buf += decoder.decode(chunk as Uint8Array, { stream: true });
+      let idx: number;
       while ((idx = buf.indexOf('\n\n')) !== -1) {
         const event = buf.slice(0, idx);
         buf = buf.slice(idx + 2);
         const line = event.split('\n').find((l) => l.startsWith('data:'));
         if (!line) continue;
-        let data;
+        let data: BuildEvent;
         try {
-          data = JSON.parse(line.slice(5));
+          data = JSON.parse(line.slice(5)) as BuildEvent;
         } catch {
           continue;
         }
@@ -68,7 +79,7 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
           lastMessage = data.message.trim();
           log(`binderbot: [${data.phase ?? '?'}] ${lastMessage.split('\n').pop()}`);
         }
-        if (data.phase === 'ready') {
+        if (data.phase === 'ready' && data.url && data.token) {
           return {
             serverUrl: data.url,
             token: data.token,
@@ -85,7 +96,7 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
       `BinderHub event stream ended without ready/failed (last: ${lastMessage || 'none'})`
     );
   } catch (err) {
-    if (err.name === 'AbortError' || controller.signal.aborted) {
+    if ((err as Error).name === 'AbortError' || controller.signal.aborted) {
       throw new NbverifyError('PROVISIONING_FAILED', `launch timed out after ${launchTimeout}s`);
     }
     throw err;
@@ -95,19 +106,19 @@ export async function start(repoUrl, { ref = 'HEAD', binderhub = DEFAULT_HUB, la
   }
 }
 
-export async function status(session) {
+export async function status(session: Session): Promise<BackendStatus> {
   try {
     const res = await fetch(`${session.server_url}api/`, {
       headers: { Authorization: `token ${session.token}` },
     });
     return { running: res.ok, detail: `GET api/ → ${res.status}` };
   } catch (err) {
-    return { running: false, detail: err.message };
+    return { running: false, detail: (err as Error).message };
   }
 }
 
-export async function stop(session, { log = () => {} } = {}) {
-  let res;
+export async function stop(session: Session, { log = () => {} }: StopOptions = {}): Promise<void> {
+  let res: Response;
   try {
     res = await fetch(`${session.server_url}api/shutdown`, {
       method: 'POST',
@@ -115,7 +126,7 @@ export async function stop(session, { log = () => {} } = {}) {
     });
   } catch (err) {
     // Server already gone (culled or shut down) → idempotent success.
-    log(`binderbot: server unreachable during stop (${err.message}); treating as stopped`);
+    log(`binderbot: server unreachable during stop (${(err as Error).message}); treating as stopped`);
     return;
   }
   if (res.ok || res.status === 404 || res.status === 503) {

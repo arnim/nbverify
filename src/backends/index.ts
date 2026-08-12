@@ -1,6 +1,7 @@
 import * as repo2docker from './repo2docker.js';
 import * as binderbot from './binderbot.js';
 import * as jupyter4nfdi from './jupyter4nfdi.js';
+import type { Backend, BackendName } from '../types.js';
 
 /**
  * Uniform backend interface:
@@ -8,14 +9,14 @@ import * as jupyter4nfdi from './jupyter4nfdi.js';
  *   status(session)      → { running, detail }
  *   stop(session, opts)  → void (idempotent)
  */
-const backends = { repo2docker, binderbot, jupyter4nfdi };
+const backends: Record<BackendName, Backend> = { repo2docker, binderbot, jupyter4nfdi };
 
-export function getBackend(name) {
-  const backend = backends[name];
+export function getBackend(name: string): Backend {
+  const backend = backends[name as BackendName];
   if (!backend) {
     throw new Error(`unknown backend: ${name} (expected ${Object.keys(backends).join('|')})`);
   }
   return backend;
 }
 
-export const BACKEND_NAMES = Object.keys(backends);
+export const BACKEND_NAMES = Object.keys(backends) as BackendName[];

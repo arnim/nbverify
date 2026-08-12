@@ -3,24 +3,36 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NbverifyError } from './errors.js';
+import type { JupyterClient } from './jupyter.js';
+import type { RemoteResult, Renderer, RunItem, RunResult } from './types.js';
 
 const RUNNER_PATH = fileURLToPath(new URL('./runner.py', import.meta.url));
+
+export interface RunRemoteOptions {
+  /** Per-notebook timeout in seconds (default 600). */
+  timeout?: number;
+  failFast?: boolean;
+  /** Local directory for HTML artifacts (default artifacts/). */
+  outputDir?: string;
+  keepRemoteArtifacts?: boolean;
+  log?: (msg: string) => void;
+}
+
+interface ToolInfo {
+  ok: boolean;
+  version?: string;
+  error?: string;
+}
 
 /**
  * Execute documents remotely via the terminal + file protocol described in
  * SPEC.md and download the resulting HTML.
- *
- * @param {import('./jupyter.js').JupyterClient} client
- * @param {{path: string, renderer: 'quarto'|'nbconvert'}[]} items ordered
- * @param {object} opts
- * @param {number} [opts.timeout] per-notebook seconds (default 600)
- * @param {boolean} [opts.failFast]
- * @param {string} [opts.outputDir] local dir for HTML (default artifacts/)
- * @param {boolean} [opts.keepRemoteArtifacts]
- * @param {(msg: string) => void} [opts.log]
- * @returns {Promise<{success: boolean, results: object[]}>}
  */
-export async function runRemote(client, items, opts = {}) {
+export async function runRemote(
+  client: JupyterClient,
+  items: RunItem[],
+  opts: RunRemoteOptions = {}
+): Promise<{ success: boolean; results: RunResult[] }> {
   const {
     timeout = 600,
     failFast = false,
@@ -54,18 +66,19 @@ export async function runRemote(client, items, opts = {}) {
     `python ${jobDir}/runner.py`
   );
 
-  const results = [];
+  const results: RunResult[] = [];
   try {
     // Poll result files in order; overall deadline scales with the work.
     const overallDeadline = Date.now() + (timeout + 120) * 1000 * items.length + 60_000;
     for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+      const item = items[i]!;
       log(`running ${item.path} (${item.renderer}) ...`);
       const remote = await pollForResult(client, jobDir, i, overallDeadline);
       if (remote === null) {
         // done.json appeared without this result → fail-fast skipped the rest
         for (let j = i; j < items.length; j++) {
-          results.push({ path: items[j].path, renderer: items[j].renderer, status: 'skipped' });
+          const skipped = items[j]!;
+          results.push({ path: skipped.path, renderer: skipped.renderer, status: 'skipped' });
         }
         break;
       }
@@ -89,7 +102,11 @@ export async function runRemote(client, items, opts = {}) {
 }
 
 /** Verify required tools and the terminals API before doing any work. */
-export async function preflight(client, items, log = () => {}) {
+export async function preflight(
+  client: JupyterClient,
+  items: RunItem[],
+  log: (msg: string) => void = () => {}
+): Promise<void> {
   if (!(await client.terminalsAvailable())) {
     throw new NbverifyError('TOOL_UNAVAILABLE', 'server does not expose api/terminals');
   }
@@ -99,7 +116,7 @@ export async function preflight(client, items, log = () => {}) {
       throw new NbverifyError('FILE_NOT_FOUND', `not on server: ${item.path}`);
     }
   }
-  const needed = new Set(items.map((it) => it.renderer));
+  const needed = new Set<Renderer>(items.map((it) => it.renderer));
   if (needed.size === 0) return;
 
   // Tool checks also go through the file protocol (no output parsing).
@@ -127,9 +144,13 @@ os.replace(tmp, os.path.join(here, "tools.json"))
   await client.putTextFile(`${checkDir}/check.py`, script);
   const terminal = await client.createTerminal();
   const ws = await client.sendTerminalCommand(terminal, `python ${checkDir}/check.py`);
-  let tools;
+  let tools: Record<string, ToolInfo>;
   try {
-    tools = await pollForJson(client, `${checkDir}/tools.json`, Date.now() + 180_000);
+    tools = (await pollForJson(
+      client,
+      `${checkDir}/tools.json`,
+      Date.now() + 180_000
+    )) as Record<string, ToolInfo>;
   } finally {
     try {
       ws.close();
@@ -145,21 +166,26 @@ os.replace(tmp, os.path.join(here, "tools.json"))
         `${renderer} is not available on the server (${info?.error ?? info?.version ?? 'unknown'})`
       );
     }
-    log(`preflight: ${renderer} ${info.version.split('\n')[0]}`);
+    log(`preflight: ${renderer} ${(info.version ?? '').split('\n')[0]}`);
   }
 }
 
-async function pollForResult(client, jobDir, index, deadline) {
+async function pollForResult(
+  client: JupyterClient,
+  jobDir: string,
+  index: number,
+  deadline: number
+): Promise<RemoteResult | null> {
   const resultPath = `${jobDir}/result-${index}.json`;
   const donePath = `${jobDir}/done.json`;
   for (;;) {
     const model = await client.getContents(resultPath, { type: 'file', format: 'text' });
-    if (model) return JSON.parse(model.content);
+    if (model) return JSON.parse(model.content as string) as RemoteResult;
     const done = await client.getContents(donePath, { content: 0 });
     if (done) {
       // one more check in case result landed between the two requests
       const again = await client.getContents(resultPath, { type: 'file', format: 'text' });
-      if (again) return JSON.parse(again.content);
+      if (again) return JSON.parse(again.content as string) as RemoteResult;
       return null;
     }
     if (Date.now() > deadline) {
@@ -169,10 +195,14 @@ async function pollForResult(client, jobDir, index, deadline) {
   }
 }
 
-async function pollForJson(client, remotePath, deadline) {
+async function pollForJson(
+  client: JupyterClient,
+  remotePath: string,
+  deadline: number
+): Promise<unknown> {
   for (;;) {
     const model = await client.getContents(remotePath, { type: 'file', format: 'text' });
-    if (model) return JSON.parse(model.content);
+    if (model) return JSON.parse(model.content as string);
     if (Date.now() > deadline) {
       throw new NbverifyError('EXECUTION_TIMEOUT', `timed out waiting for ${remotePath}`);
     }
@@ -180,19 +210,27 @@ async function pollForJson(client, remotePath, deadline) {
   }
 }
 
-async function materializeResult(client, jobDir, item, remote, outputDir, log) {
+async function materializeResult(
+  client: JupyterClient,
+  jobDir: string,
+  item: RunItem,
+  remote: RemoteResult,
+  outputDir: string,
+  log: (msg: string) => void
+): Promise<RunResult> {
   const base = {
     path: item.path,
     renderer: item.renderer,
     exit_code: remote.exit_code,
     duration_seconds: remote.duration_seconds,
   };
+  const fileName = item.path.split('/').pop() ?? item.path;
 
   if (remote.exit_code === 0 && remote.html) {
     const htmlLocal = path.join(
       outputDir,
       ...item.path.split('/').slice(0, -1),
-      item.path.split('/').pop().replace(/\.(ipynb|qmd)$/, '.html')
+      fileName.replace(/\.(ipynb|qmd)$/, '.html')
     );
     const buf = await client.downloadFile(`${jobDir}/${remote.html}`);
     await writeFileAtomic(htmlLocal, buf);
@@ -205,7 +243,7 @@ async function materializeResult(client, jobDir, item, remote, outputDir, log) {
   const stderrLog = path.join(
     outputDir,
     'logs',
-    item.path.split('/').pop().replace(/\.(ipynb|qmd)$/, '') + '.stderr.log'
+    fileName.replace(/\.(ipynb|qmd)$/, '') + '.stderr.log'
   );
   await writeFileAtomic(stderrLog, Buffer.from(remote.stderr ?? '', 'utf8'));
   log(`${status.toUpperCase()}  ${item.path} (exit ${remote.exit_code}, ${remote.duration_seconds}s) — stderr: ${stderrLog}`);
@@ -217,22 +255,24 @@ async function materializeResult(client, jobDir, item, remote, outputDir, log) {
   };
 }
 
-function summarizeError(remote) {
+function summarizeError(remote: RemoteResult): string {
   if (remote.timed_out) return 'EXECUTION_TIMEOUT: renderer exceeded timeout';
   const text = `${remote.stderr ?? ''}\n${remote.stdout ?? ''}`;
   const lines = text.split('\n').filter((l) => l.trim());
   const interesting = lines.find(
     (l) => /Error|error|Exception|Traceback|FAILED/.test(l)
   );
-  return (interesting ?? lines[lines.length - 1] ?? 'execution failed').trim().slice(0, 500) +
-    ' (full stderr in log)';
+  return (
+    (interesting ?? lines[lines.length - 1] ?? 'execution failed').trim().slice(0, 500) +
+    ' (full stderr in log)'
+  );
 }
 
-async function writeFileAtomic(filePath, buf) {
+async function writeFileAtomic(filePath: string, buf: Buffer): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.tmp-${crypto.randomBytes(4).toString('hex')}`;
   await fs.writeFile(tmp, buf);
   await fs.rename(tmp, filePath);
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
