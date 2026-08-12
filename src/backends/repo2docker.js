@@ -57,6 +57,11 @@ async function pingServer(port, token) {
     const res = await fetch(`http://127.0.0.1:${port}/api/`, {
       headers: { Authorization: `token ${token}` },
       redirect: 'follow',
+      // Docker's port forwarding can accept the TCP connection before the
+      // service in the container is ready, then leave HTTP pending forever
+      // (observed on GitHub-hosted runners). Bound every probe so the outer
+      // readiness loop can continue and enforce launchTimeout.
+      signal: AbortSignal.timeout(5_000),
     });
     return res.ok;
   } catch {
