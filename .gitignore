@@ -10,3 +10,8 @@ __pycache__/
 *.py[cod]
 .venv/
 SPIKE*.md
+
+# Go build and test artifacts
+bin/
+*.test
+coverage.out
